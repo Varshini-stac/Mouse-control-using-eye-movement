@@ -1,0 +1,85 @@
+import cv2
+import mediapipe as mp
+import pyautogui
+
+cam = cv2.VideoCapture(0)
+
+face_mesh = mp.solutions.face_mesh.FaceMesh(
+    static_image_mode=False,
+    max_num_faces=1,
+    refine_landmarks=True,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5
+)
+
+screen_w, screen_h = pyautogui.size()
+
+cv2.namedWindow("Eye Controlled Mouse", cv2.WINDOW_NORMAL)
+cv2.setWindowProperty("Eye Controlled Mouse", cv2.WND_PROP_TOPMOST, 1)
+
+cv2.resizeWindow("Eye Controlled Mouse", 1280, 720)
+
+left_click_active = False
+right_click_active = False
+
+while True:
+    _, frame = cam.read()
+    frame = cv2.flip(frame, 1)
+
+    frame = cv2.resize(frame, (1280, 720))
+    frame = cv2.convertScaleAbs(frame, alpha=1.2, beta=30)
+
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    output = face_mesh.process(rgb_frame)
+    landmark_points = output.multi_face_landmarks
+    frame_h, frame_w, _ = frame.shape
+
+    if landmark_points:
+        landmarks = landmark_points[0].landmark
+
+        # Cursor control using right iris
+        for id, landmark in enumerate(landmarks[474:478]):
+            x = int(landmark.x * frame_w)
+            y = int(landmark.y * frame_h)
+            cv2.circle(frame, (x, y), 3, (0, 255, 0))
+            if id == 1:
+                screen_x = screen_w * landmark.x
+                screen_y = screen_h * landmark.y
+                screen_x = max(10, min(screen_w - 10, screen_x))
+                screen_y = max(10, min(screen_h - 10, screen_y))
+                pyautogui.moveTo(screen_x, screen_y)
+
+        # Left eye blink (click once)
+        left = [landmarks[145], landmarks[159]]
+        for landmark in left:
+            x = int(landmark.x * frame_w)
+            y = int(landmark.y * frame_h)
+            cv2.circle(frame, (x, y), 3, (0, 255, 255))
+        if (left[0].y - left[1].y) < 0.004:
+            if not left_click_active:
+                pyautogui.click()
+                left_click_active = True
+        else:
+            left_click_active = False
+
+        # Right eye blink (right click once)
+        right = [landmarks[374], landmarks[386]]
+        for landmark in right:
+            x = int(landmark.x * frame_w)
+            y = int(landmark.y * frame_h)
+            cv2.circle(frame, (x, y), 3, (255, 0, 255))
+        if (right[0].y - right[1].y) < 0.004:
+            if not right_click_active:
+                pyautogui.rightClick()
+                right_click_active = True
+        else:
+            right_click_active = False
+
+    cv2.imshow('Eye Controlled Mouse', frame)
+
+    key = cv2.waitKey(1) & 0xFF
+    if key == ord('q'):  # If 'q' is pressed, exit
+        break
+
+cam.release()
+cv2.destroyAllWindows()
